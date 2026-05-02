@@ -3,4 +3,4 @@
 
 git add .
 git commit -m "message goes here"
-add push origin main
+git push origin main
