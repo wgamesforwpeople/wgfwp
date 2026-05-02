@@ -1,0 +1,394 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Alpine Linux</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #111;
+      color: #eee;
+      font-family: monospace;
+      height: 100%;
+    }
+    #boot_splash {
+      position: fixed;
+      inset: 0;
+      background: #fff;
+      color: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      z-index: 9999;
+      text-align: center;
+      padding: 24px;
+      box-sizing: border-box;
+      white-space: pre-wrap;
+    }
+    #app {
+      display: none;
+      height: 100%;
+    }
+    #wrap {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+    #topbar {
+      padding: 8px 12px;
+      border-bottom: 1px solid #333;
+      background: #1a1a1a;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    #statusbar {
+      font-size: 12px;
+      color: #bbb;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #notice {
+      margin: 0;
+      padding: 8px 12px;
+      border-bottom: 1px solid #333;
+      background: #111;
+    }
+    #main {
+      flex: 1;
+      display: flex;
+      min-height: 0;
+    }
+    #leftpane {
+      flex: 1 1 auto;
+      min-width: 0;
+      background: #000;
+      border-right: 1px solid #333;
+      display: flex;
+      flex-direction: column;
+      padding-bottom: 14px;
+      box-sizing: border-box;
+    }
+    #screen_container {
+      flex: 1;
+      overflow: auto;
+      background: #000;
+    }
+    #screen_container > div,
+    #screen_container canvas {
+      display: block;
+    }
+    #rightpane {
+      width: 420px;
+      max-width: 420px;
+      min-width: 320px;
+      overflow-y: auto;
+      background: #111;
+    }
+    .section {
+      padding: 12px;
+      border-bottom: 1px solid #333;
+      background: #1a1a1a;
+    }
+    .section h2 {
+      margin: 0 0 8px 0;
+      font-size: 16px;
+      font-weight: normal;
+    }
+    .section p {
+      margin: 0 0 8px 0;
+      line-height: 1.4;
+    }
+    .section pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #000;
+      border: 1px solid #333;
+      padding: 8px;
+      color: #eee;
+      overflow-x: auto;
+    }
+    .btnrow {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    button {
+      background: #000;
+      color: #eee;
+      border: 1px solid #333;
+      padding: 8px 10px;
+      font: inherit;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #111;
+    }
+    #footer_notes {
+      padding: 12px;
+      border-top: 1px solid #333;
+      background: #111;
+    }
+    #footer_notes p {
+      margin: 0 0 8px 0;
+    }
+    #footer_notes p:last-child {
+      margin-bottom: 0;
+    }
+  </style>
+</head>
+<body>
+  <div id="boot_splash">Decompiling Alpine Image...</div>
+
+  <div id="app">
+    <div id="wrap">
+      <div id="topbar">
+        <div>Alpine Linux</div>
+        <div id="statusbar">Starting...</div>
+      </div>
+
+      <p id="notice">Packages cant be installed because this VM doesnt have wifi.</p>
+
+      <div id="main">
+        <div id="leftpane">
+          <div id="screen_container"></div>
+        </div>
+
+        <div id="rightpane">
+          <div class="section">
+            <h2>Test C/GCC</h2>
+            <pre>cat > hello.c <<'EOF'
+#include &lt;stdio.h&gt;
+int main(void) {
+    puts("hello from C");
+    return 0;
+}
+EOF
+
+gcc hello.c -o hello
+./hello</pre>
+          </div>
+
+          <div class="section">
+            <h2>Test Python</h2>
+            <pre>python3 --version
+pip3 --version
+
+python3 -m venv .venv
+source .venv/bin/activate</pre>
+          </div>
+
+          <div class="section">
+            <h2>Cache</h2>
+            <p>This version does not save VM state. It only caches the decompressed Alpine image locally so later loads are faster.</p>
+            <div class="btnrow">
+              <button id="clearCacheBtn">Delete Image Cache</button>
+            </div>
+          </div>
+
+          <div class="section">
+            <h2>Notes</h2>
+            <pre>Login:
+user: root
+password: linux1234?</pre>
+          </div>
+        </div>
+      </div>
+
+      <div id="footer_notes">
+        <p>Submit a form to request apps.</p>
+        <p>Installed apps:</p>
+        <p>GCC</p>
+        <p>Python3 and PIP</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="assets/libv86.js"></script>
+  <script>
+    const DB_NAME = "alpine-browser-vm";
+    const DB_VERSION = 1;
+    const STORE_KV = "kv";
+
+    const KEY_IMAGE_BLOB = "decompressed-image-blob";
+    const KEY_MANIFEST_HASH = "manifest-hash";
+
+    function setSplash(text) {
+      document.getElementById("boot_splash").textContent = text;
+    }
+
+    function setStatus(text) {
+      document.getElementById("statusbar").textContent = text;
+    }
+
+    function openDb() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains(STORE_KV)) {
+            db.createObjectStore(STORE_KV);
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function dbGet(key) {
+      const db = await openDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_KV, "readonly");
+        const req = tx.objectStore(STORE_KV).get(key);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function dbSet(key, value) {
+      const db = await openDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_KV, "readwrite");
+        tx.objectStore(STORE_KV).put(value, key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    async function dbDelete(key) {
+      const db = await openDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_KV, "readwrite");
+        tx.objectStore(STORE_KV).delete(key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    async function fetchManifest() {
+      const res = await fetch("assets/alpine-packed/manifest.json", { cache: "no-store" });
+      if (!res.ok) throw new Error("Failed to load manifest.json");
+      return await res.json();
+    }
+
+    function manifestHash(manifest) {
+      return JSON.stringify({
+        format: manifest.format,
+        original_filename: manifest.original_filename,
+        original_size: manifest.original_size,
+        compressed_size: manifest.compressed_size,
+        parts: manifest.parts
+      });
+    }
+
+    async function fetchPart(path, index, total) {
+      setSplash(`Decompiling Alpine Image...\nDownloading part ${index + 1} / ${total}`);
+      const res = await fetch(path);
+      if (!res.ok) throw new Error("Failed to load " + path);
+      return new Uint8Array(await res.arrayBuffer());
+    }
+
+    function concatUint8Arrays(chunks) {
+      let total = 0;
+      for (const c of chunks) total += c.length;
+      const out = new Uint8Array(total);
+      let offset = 0;
+      for (const c of chunks) {
+        out.set(c, offset);
+        offset += c.length;
+      }
+      return out;
+    }
+
+    async function gunzipBytes(bytes) {
+      setSplash("Decompiling Alpine Image...\nExpanding compressed image");
+      const ds = new DecompressionStream("gzip");
+      const stream = new Blob([bytes]).stream().pipeThrough(ds);
+      return await new Response(stream).blob();
+    }
+
+    async function getDecompressedImageBlob() {
+      const manifest = await fetchManifest();
+      const hash = manifestHash(manifest);
+
+      const cachedHash = await dbGet(KEY_MANIFEST_HASH);
+      const cachedBlob = await dbGet(KEY_IMAGE_BLOB);
+
+      if (cachedBlob && cachedHash === hash) {
+        setStatus("Loaded cached Alpine image");
+        return cachedBlob;
+      }
+
+      const chunks = [];
+      for (let i = 0; i < manifest.parts.length; i++) {
+        chunks.push(await fetchPart("assets/alpine-packed/" + manifest.parts[i], i, manifest.parts.length));
+      }
+
+      const compressed = concatUint8Arrays(chunks);
+      const decompressedBlob = await gunzipBytes(compressed);
+
+      setSplash("Decompiling Alpine Image...\nSaving local cache");
+      await dbSet(KEY_IMAGE_BLOB, decompressedBlob);
+      await dbSet(KEY_MANIFEST_HASH, hash);
+
+      return decompressedBlob;
+    }
+
+    async function clearImageCache() {
+      await dbDelete(KEY_IMAGE_BLOB);
+      await dbDelete(KEY_MANIFEST_HASH);
+      setStatus("Deleted cached Alpine image");
+    }
+
+    function setupButtons() {
+      document.getElementById("clearCacheBtn").onclick = async () => {
+        await clearImageCache();
+      };
+    }
+
+    async function boot() {
+      setupButtons();
+
+      setSplash("Decompiling Alpine Image...");
+      setStatus("Preparing Alpine image");
+
+      const imageBlob = await getDecompressedImageBlob();
+      const imageUrl = URL.createObjectURL(imageBlob);
+
+      setSplash("Booting Alpine...");
+      setStatus("Cold booting Alpine");
+
+      document.getElementById("boot_splash").style.display = "none";
+      document.getElementById("app").style.display = "block";
+
+      new V86({
+        wasm_path: "assets/v86.wasm",
+        memory_size: 256 * 1024 * 1024,
+        vga_memory_size: 16 * 1024 * 1024,
+        screen_container: document.getElementById("screen_container"),
+        bios: { url: "assets/seabios.bin" },
+        vga_bios: { url: "assets/vgabios.bin" },
+        hda: { url: imageUrl },
+        boot_order: 0x1,
+        autostart: true
+      });
+
+      setStatus("Running Alpine");
+    }
+
+    boot().catch(err => {
+      document.getElementById("boot_splash").textContent =
+        "Failed to decompile Alpine Image: " + err.message;
+      console.error(err);
+      setStatus("Boot failed");
+    });
+  </script>
+</body>
+</html>
